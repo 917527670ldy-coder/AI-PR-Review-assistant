@@ -1,6 +1,11 @@
-﻿package server
+package server
 
-func Start() error {
-    r := NewRouter()
-    return r.Run(":8081")
+import (
+	"xengineer/internal/config"
+)
+
+// Start 启动 HTTP 服务器
+func Start(cfg *config.Config) error {
+	r := NewRouter(cfg)
+	return r.Run(":" + cfg.ServerPort)
 }
