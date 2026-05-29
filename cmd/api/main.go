@@ -1,13 +1,19 @@
-﻿package main
+package main
 
 import (
-    "log"
+	"log"
 
-    "xengineer/internal/server"
+	"xengineer/internal/config"
+	"xengineer/internal/server"
 )
 
 func main() {
-    if err := server.Start(); err != nil {
-        log.Fatal(err)
-    }
+	// 加载配置
+	cfg := config.Load()
+
+	// 启动服务器
+	log.Printf("正在启动服务器，端口: %s...", cfg.ServerPort)
+	if err := server.Start(cfg); err != nil {
+		log.Fatal(err)
+	}
 }
