@@ -1,0 +1,74 @@
+# 环境配置文件（包含敏感信息）
+.env
+.env.local
+.env.*.local
+
+# 编译输出目录
+bin/
+dist/
+build/
+out/
+
+# Go 编译产物
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go 测试覆盖率文件
+*.coverprofile
+coverage.txt
+coverage.html
+
+# Go 工具缓存
+go.sum.backup
+
+# IDE 和编辑器配置
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# 依赖目录
+vendor/
+node_modules/
+
+# 日志文件
+*.log
+logs/
+
+# 临时文件
+tmp/
+temp/
+*.tmp
+*.bak
+
+# 系统文件
+.DS_Store
+Thumbs.db
+*.stackdump
+
+# 数据库文件
+*.db
+*.sqlite
+*.sqlite3
+
+# 密钥和证书文件
+*.pem
+*.key
+*.crt
+*.p12
+secrets/
+
+# 文档生成的临时文件
+docs/_build/
+
+# 其他
+.claude/

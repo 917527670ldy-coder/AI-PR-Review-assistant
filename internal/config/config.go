@@ -3,6 +3,8 @@ package config
 import (
 	"os"
 	"strconv"
+
+	"github.com/joho/godotenv"
 )
 
 // Config 应用程序的所有配置
@@ -25,7 +27,11 @@ type Config struct {
 }
 
 // Load 从环境变量读取配置
+// 会先尝试从 .env 文件加载，然后从系统环境变量读取
 func Load() *Config {
+	// 加载 .env 文件（如果存在）
+	godotenv.Load()
+
 	return &Config{
 		ServerPort:          getEnv("SERVER_PORT", "8081"),
 		GitHubToken:         os.Getenv("GITHUB_TOKEN"),
@@ -34,6 +40,12 @@ func Load() *Config {
 		DatabaseURL:         getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/xengineer?sslmode=disable"),
 		RedisURL:            getEnv("REDIS_URL", "redis://localhost:6379"),
 	}
+}
+
+// LoadFromPath 从指定路径的 .env 文件加载配置
+func LoadFromPath(path string) *Config {
+	godotenv.Load(path)
+	return Load()
 }
 
 // getEnv 获取环境变量，如果不存在则返回默认值
