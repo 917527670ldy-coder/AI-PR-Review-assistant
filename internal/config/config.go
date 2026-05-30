@@ -18,6 +18,7 @@ type Config struct {
 
 	// AI 配置
 	ClaudeAPIKey string
+	AIModel      string // AI 模型名称，如 "qwen-plus", "qwen-turbo", "qwen-max"
 
 	// 数据库配置
 	DatabaseURL string
@@ -37,6 +38,7 @@ func Load() *Config {
 		GitHubToken:         os.Getenv("GITHUB_TOKEN"),
 		GitHubWebhookSecret: os.Getenv("GITHUB_WEBHOOK_SECRET"),
 		ClaudeAPIKey:        os.Getenv("CLAUDE_API_KEY"),
+		AIModel:             getEnv("AI_MODEL", "qwen-plus"), // 默认使用 qwen-plus
 		DatabaseURL:         getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/xengineer?sslmode=disable"),
 		RedisURL:            getEnv("REDIS_URL", "redis://localhost:6379"),
 	}
