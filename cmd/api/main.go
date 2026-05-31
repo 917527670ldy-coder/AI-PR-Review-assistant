@@ -4,10 +4,15 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
+	"xengineer/internal/ai"
 	"xengineer/internal/config"
 	"xengineer/internal/github"
+	"xengineer/internal/queue"
 	"xengineer/internal/server"
+	"xengineer/internal/worker"
 )
 
 func main() {
@@ -20,11 +25,80 @@ func main() {
 		return
 	}
 
-	// 启动服务器
-	log.Printf("正在启动服务器，端口: %s...", cfg.ServerPort)
-	if err := server.Start(cfg); err != nil {
-		log.Fatal(err)
+	// 启动完整系统
+	startSystem(cfg)
+}
+
+// startSystem 启动完整系统
+func startSystem(cfg *config.Config) {
+	fmt.Println("=== AI PR Review Assistant ===")
+	fmt.Println()
+
+	// 1. 检查必要配置
+	if cfg.GitHubToken == "" {
+		log.Fatal("❌ 请设置 GITHUB_TOKEN 环境变量")
 	}
+	if cfg.ClaudeAPIKey == "" {
+		log.Fatal("❌ 请设置 CLAUDE_API_KEY 环境变量")
+	}
+	if cfg.GitHubWebhookSecret == "" {
+		log.Fatal("❌ 请设置 GITHUB_WEBHOOK_SECRET 环境变量")
+	}
+	fmt.Println("✅ 配置检查通过")
+
+	// 2. 连接 Redis
+	fmt.Println("连接 Redis...")
+	q, err := queue.NewRedisQueue(cfg.RedisURL, "pr_review_tasks")
+	if err != nil {
+		log.Fatalf("❌ 连接 Redis 失败: %v", err)
+	}
+	defer q.Close()
+	fmt.Println("✅ Redis 连接成功")
+
+	// 3. 创建 GitHub 客户端
+	ghClient := github.NewClient(cfg.GitHubToken)
+	fmt.Println("✅ GitHub 客户端创建成功")
+
+	// 4. 创建 AI 分析器
+	analyzer := ai.NewAnalyzer(cfg.ClaudeAPIKey, cfg.AIModel)
+	fmt.Println("✅ AI 分析器创建成功")
+
+	// 5. 创建并启动 Worker
+	w := worker.NewWorker(q, ghClient, analyzer)
+	w.Start()
+	fmt.Println("✅ Worker 已启动")
+	fmt.Println()
+
+	// 6. 启动 HTTP 服务器
+	go func() {
+		if err := server.Start(cfg, q); err != nil {
+			log.Fatalf("❌ 服务器启动失败: %v", err)
+		}
+	}()
+
+	// 7. 等待中断信号
+	fmt.Println("系统运行中...")
+	fmt.Println("按 Ctrl+C 停止系统")
+	fmt.Println()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	<-sigChan
+
+	// 8. 停止 Worker
+	fmt.Println("\n正在停止系统...")
+	w.Stop()
+
+	// 9. 输出统计信息
+	stats := w.GetStats()
+	fmt.Println()
+	fmt.Println("=== Worker 统计信息 ===")
+	fmt.Printf("已处理任务: %d\n", stats.Processed)
+	fmt.Printf("失败任务: %d\n", stats.Failed)
+	fmt.Printf("总耗时: %d 毫秒\n", stats.TotalTime)
+
+	fmt.Println()
+	fmt.Println("✅ 系统已停止")
 }
 
 // testGitHubAPI 测试 GitHub API 客户端
