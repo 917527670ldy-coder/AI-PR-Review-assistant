@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"xengineer/internal/ai"
 	"xengineer/internal/github"
 	"xengineer/internal/queue"
 )
@@ -17,7 +18,7 @@ type Worker struct {
 	// 依赖的服务
 	queue  queue.Queue
 	github *github.Client
-	// ai     ai.Analyzer  // 后面实现
+	ai     *ai.Analyzer // AI 分析器
 
 	// 配置参数
 	pollTimeout time.Duration // 每次等待任务的超时时间
@@ -44,12 +45,13 @@ type Stats struct {
 }
 
 // NewWorker 创建新的 Worker
-func NewWorker(q queue.Queue, gh *github.Client) *Worker {
+func NewWorker(q queue.Queue, gh *github.Client, analyzer *ai.Analyzer) *Worker {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Worker{
 		queue:       q,
 		github:      gh,
+		ai:          analyzer,
 		pollTimeout: 10 * time.Second, // 默认等待 10 秒
 		maxRetries:  3,                // 默认重试 3 次
 		ctx:         ctx,
@@ -170,13 +172,31 @@ func (w *Worker) doProcess(task *queue.Task) error {
 	}
 	log.Printf("     ✓ 共 %d 个文件变更", len(diffs))
 
-	// 步骤 3: 调用 AI 分析（暂时跳过，后面实现）
-	log.Printf("  → 步骤 3: AI 分析 (待实现)")
-	// reviewResult := w.ai.Analyze(prInfo, diffs)
+	// 步骤 3: 调用 AI 分析
+	log.Printf("  → 步骤 3: AI 分析代码变更")
 
-	// 步骤 4: 发布评审结果（暂时发布一个简单评论，后面实现完整功能）
+	// 构建 PR 信息字符串
+	prInfoStr := fmt.Sprintf("标题: %s\n作者: %s\n基础分支: %s\n目标分支: %s",
+		prInfo.Title, prInfo.User, prInfo.BaseRef, prInfo.HeadRef)
+
+	// 构建 Diff 字符串列表
+	var diffStrings []string
+	for _, diff := range diffs {
+		diffStr := fmt.Sprintf("文件: %s\n状态: %s\n变更: +%d -%d\n%s",
+			diff.Filename, diff.Status, diff.Additions, diff.Deletions, diff.Patch)
+		diffStrings = append(diffStrings, diffStr)
+	}
+
+	// 调用 AI 分析器
+	reviewResult, err := w.ai.Analyze(w.ctx, prInfoStr, diffStrings)
+	if err != nil {
+		return fmt.Errorf("AI 分析失败: %w", err)
+	}
+	log.Printf("     ✓ AI 分析完成，质量评分: %d/100", reviewResult.Score)
+
+	// 步骤 4: 发布评审结果
 	log.Printf("  → 步骤 4: 发布评审评论")
-	comment := fmt.Sprintf("## 🤖 AI PR Review Bot\n\n**PR #%d: %s**\n\n正在分析中...\n\n- 文件变更: %d 个文件\n- 作者: %s\n\n_此功能正在开发中，完整分析即将上线！_", task.PRNumber, prInfo.Title, len(diffs), prInfo.User)
+	comment := buildReviewComment(prInfo, diffs, reviewResult)
 
 	err = w.github.CreatePRComment(task.Owner, task.Repo, task.PRNumber, comment)
 	if err != nil {
@@ -185,6 +205,103 @@ func (w *Worker) doProcess(task *queue.Task) error {
 	log.Printf("     ✓ 评审评论已发布")
 
 	return nil
+}
+
+// buildReviewComment 构建评审评论内容
+func buildReviewComment(prInfo *github.PRInfo, diffs []github.FileDiff, result *ai.ReviewResult) string {
+	comment := fmt.Sprintf("## 🤖 AI 代码评审报告\n\n")
+	comment += fmt.Sprintf("**PR #%d: %s**\n", prInfo.Number, prInfo.Title)
+	comment += fmt.Sprintf("**作者:** %s\n\n", prInfo.User)
+
+	// 变更总结
+	comment += fmt.Sprintf("### 📌 变更总结\n\n%s\n\n", result.Summary)
+
+	// 文件变更统计
+	comment += fmt.Sprintf("### 📊 变更统计\n\n")
+	comment += fmt.Sprintf("- 文件变更数: %d\n", len(diffs))
+	totalAdditions := 0
+	totalDeletions := 0
+	for _, diff := range diffs {
+		totalAdditions += diff.Additions
+		totalDeletions += diff.Deletions
+	}
+	comment += fmt.Sprintf("- 新增行数: %d\n", totalAdditions)
+	comment += fmt.Sprintf("- 删除行数: %d\n\n", totalDeletions)
+
+	// 风险识别
+	if len(result.Risks) > 0 {
+		comment += fmt.Sprintf("### ⚠️ 风险识别\n\n")
+		for i, risk := range result.Risks {
+			severityEmoji := getSeverityEmoji(risk.Severity)
+			comment += fmt.Sprintf("%d. %s **%s** (严重程度: %s)\n", i+1, severityEmoji, risk.Description, risk.Severity)
+			if risk.File != "" {
+				comment += fmt.Sprintf("   - 文件: `%s`\n", risk.File)
+			}
+			if risk.Line > 0 {
+				comment += fmt.Sprintf("   - 行号: %d\n", risk.Line)
+			}
+			comment += "\n"
+		}
+	} else {
+		comment += fmt.Sprintf("### ✅ 风险识别\n\n未发现明显风险问题。\n\n")
+	}
+
+	// 改进建议
+	if len(result.Suggestions) > 0 {
+		comment += fmt.Sprintf("### 💡 改进建议\n\n")
+		for i, suggestion := range result.Suggestions {
+			comment += fmt.Sprintf("%d. %s\n", i+1, suggestion.Description)
+			if suggestion.File != "" {
+				comment += fmt.Sprintf("   - 文件: `%s`\n", suggestion.File)
+			}
+			if suggestion.CodeSnippet != "" {
+				comment += fmt.Sprintf("   ```\n   %s\n   ```\n", suggestion.CodeSnippet)
+			}
+			comment += "\n"
+		}
+	} else {
+		comment += fmt.Sprintf("### 💡 改进建议\n\n暂无特别建议。\n\n")
+	}
+
+	// 质量评分
+	scoreEmoji := getScoreEmoji(result.Score)
+	comment += fmt.Sprintf("### 🎯 代码质量评分\n\n")
+	comment += fmt.Sprintf("%s **%d/100**\n\n", scoreEmoji, result.Score)
+
+	// 评审时间
+	comment += fmt.Sprintf("---\n\n")
+	comment += fmt.Sprintf("_由 AI PR Review Bot 自动生成_\n")
+
+	return comment
+}
+
+// getSeverityEmoji 根据严重程度返回对应的 Emoji
+func getSeverityEmoji(severity string) string {
+	switch severity {
+	case "high":
+		return "🔴"
+	case "medium":
+		return "🟡"
+	case "low":
+		return "🟢"
+	default:
+		return "⚪"
+	}
+}
+
+// getScoreEmoji 根据评分返回对应的 Emoji
+func getScoreEmoji(score int) string {
+	if score >= 90 {
+		return "🌟"
+	} else if score >= 80 {
+		return "✨"
+	} else if score >= 70 {
+		return "👍"
+	} else if score >= 60 {
+		return "😐"
+	} else {
+		return "⚠️"
+	}
 }
 
 // updateStats 更新统计信息

@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"xengineer/internal/ai"
 	"xengineer/internal/config"
 	"xengineer/internal/github"
 	"xengineer/internal/queue"
@@ -39,15 +40,22 @@ func main() {
 	ghClient := github.NewClient(cfg.GitHubToken)
 	fmt.Println("✅ GitHub 客户端创建成功")
 
-	// 4. 创建 Worker
-	w := worker.NewWorker(q, ghClient)
+	// 4. 创建 AI 分析器
+	if cfg.ClaudeAPIKey == "" {
+		log.Fatal("❌ 请设置 CLAUDE_API_KEY 环境变量（百炼 API Key）")
+	}
+	analyzer := ai.NewAnalyzer(cfg.ClaudeAPIKey, cfg.AIModel)
+	fmt.Println("✅ AI 分析器创建成功")
+
+	// 5. 创建 Worker
+	w := worker.NewWorker(q, ghClient, analyzer)
 	fmt.Println("✅ Worker 创建成功")
 	fmt.Println()
 
-	// 5. 启动 Worker
+	// 6. 启动 Worker
 	w.Start()
 
-	// 6. 添加测试任务
+	// 7. 添加测试任务
 	fmt.Println("添加测试任务...")
 	testTask := queue.NewPRReviewTask(
 		"gin-gonic", "gin", 1,
@@ -61,7 +69,7 @@ func main() {
 	fmt.Printf("✅ 测试任务已入队: %s\n", testTask.String())
 	fmt.Println()
 
-	// 7. 等待 Worker 处理或用户中断
+	// 8. 等待 Worker 处理或用户中断
 	fmt.Println("Worker 正在运行，等待任务处理...")
 	fmt.Println("按 Ctrl+C 停止 Worker")
 	fmt.Println()
@@ -79,10 +87,10 @@ func main() {
 		fmt.Println("\n测试时间结束...")
 	}
 
-	// 8. 停止 Worker
+	// 9. 停止 Worker
 	w.Stop()
 
-	// 9. 输出统计信息
+	// 10. 输出统计信息
 	stats := w.GetStats()
 	fmt.Println()
 	fmt.Println("=== Worker 统计信息 ===")
