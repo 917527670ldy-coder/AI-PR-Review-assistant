@@ -3,6 +3,9 @@
 一个基于 Go 的 AI PR 自动评审工具。  
 当 GitHub PR 事件触发后，系统会自动拉取 PR 信息和代码变更，调用 AI 分析并将评审结果评论回 PR。
 
+## 演示视频地址
+https://www.bilibili.com/video/BV1utVU6xECV/
+
 ## 功能概览
 
 - 接收 GitHub `pull_request` Webhook
