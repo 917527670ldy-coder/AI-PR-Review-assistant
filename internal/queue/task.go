@@ -78,6 +78,11 @@ func FromJSON(data string) (*Task, error) {
 
 // String 返回任务的字符串表示（用于日志）
 func (t *Task) String() string {
+	shortSHA := t.SHA
+	if len(shortSHA) > 8 {
+		shortSHA = shortSHA[:8]
+	}
+
 	return fmt.Sprintf("Task[%s]: %s/%s#%d (action=%s, sha=%s)",
-		t.ID, t.Owner, t.Repo, t.PRNumber, t.Action, t.SHA[:8])
+		t.ID, t.Owner, t.Repo, t.PRNumber, t.Action, shortSHA)
 }
